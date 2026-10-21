@@ -1,5 +1,9 @@
 # Codex Web · 浏览器对话端
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org/)
+[![Release](https://img.shields.io/github/v/release/demonnicelzb/codex-config-webui?style=flat-square)](https://github.com/demonnicelzb/codex-config-webui/releases/latest)
+
 给 Codex CLI 的模型供应商配一个网页对话界面：直接复用 `~/.codex/config.toml` 里的 provider、API Key 与
 `models.json` 模型目录，所以在浏览器里看到的模型（DeepSeek-V4-Pro / Flash / Vision）和思考强度与终端里的
 `codex` 完全一致。
@@ -7,6 +11,14 @@
 零依赖：只用 Node.js 内置模块，没有 `npm install`，没有构建步骤，不引入任何 CDN 资源（离线可用）。
 
 ![界面预览](docs/preview.png)
+
+## 直接下载使用（不用 Git、不用装依赖）
+
+只想用、不想看代码：去 [**Releases**](https://github.com/demonnicelzb/codex-config-webui/releases/latest)
+下载 `codex-web-v1.0.0.zip`，解压后双击 `启动.cmd`（Windows）或执行 `node server.mjs`（macOS / Linux）。
+
+前提只有三条：Node.js 18+、能访问模型 API、本机已有一份 Codex 配置（`~/.codex/config.toml` 与
+`models.json`）。API Key 不会随包分发，所以换机器时要自己准备配置或用环境变量。
 
 ## 快速开始
 
