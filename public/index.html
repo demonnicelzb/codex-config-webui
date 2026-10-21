@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Codex Web · 对话端</title>
+<meta name="color-scheme" content="dark" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b0e13'/%3E%3Cpath d='M11 10l7 6-7 6' stroke='%2358a6ff' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="side-head">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M7 6l7 6-7 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <span class="brand-name">codex<span class="brand-dim">web</span></span>
+      </div>
+      <button class="icon-btn sidebar-close" id="closeSidebar" title="关闭侧栏" aria-label="关闭侧栏">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+
+    <button class="new-chat" id="newChat">
+      <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span>新建对话</span>
+      <kbd>Ctrl K</kbd>
+    </button>
+
+    <div class="search-wrap">
+      <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 16l4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <input id="search" type="search" placeholder="搜索对话" autocomplete="off" spellcheck="false" />
+    </div>
+
+    <nav class="chat-list" id="chatList" aria-label="对话列表"></nav>
+
+    <div class="side-foot">
+      <div class="side-meta" id="sideMeta">
+        <span class="dot" id="connDot"></span>
+        <span id="providerLabel">正在连接…</span>
+      </div>
+      <div class="side-note">本地运行 · API Key 仅保存在服务端</div>
+    </div>
+  </aside>
+
+  <div class="scrim" id="scrim" hidden></div>
+
+  <main class="main">
+    <header class="topbar">
+      <button class="icon-btn only-mobile" id="openSidebar" title="菜单" aria-label="菜单">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      <div class="title-wrap">
+        <h1 id="chatTitle">新对话</h1>
+        <span class="title-sub" id="chatSub">与 Codex 一起写代码</span>
+      </div>
+      <div class="top-controls">
+        <label class="ctl" title="模型">
+          <span class="ctl-label">模型</span>
+          <select id="modelSelect" aria-label="选择模型"></select>
+        </label>
+        <label class="ctl" title="思考强度">
+          <span class="ctl-label">思考</span>
+          <select id="effortSelect" aria-label="选择思考强度"></select>
+        </label>
+        <button class="icon-btn" id="exportBtn" title="导出为 Markdown" aria-label="导出为 Markdown">
+          <svg viewBox="0 0 24 24" width="17" height="17"><path d="M12 4v10m0 0l-4-4m4 4l4-4M5 18h14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="icon-btn" id="settingsBtn" title="设置" aria-label="设置">
+          <svg viewBox="0 0 24 24" width="17" height="17"><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 3.5v2.2M12 18.3v2.2M4.9 7.8l1.9 1.1M17.2 15.1l1.9 1.1M4.9 16.2l1.9-1.1M17.2 8.9l1.9-1.1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="viewport" id="viewport">
+      <div class="thread" id="thread" role="log" aria-live="polite"></div>
+
+      <section class="empty" id="empty">
+        <div class="empty-mark">
+          <svg viewBox="0 0 24 24" width="26" height="26"><path d="M7 6l7 6-7 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <h2>开始与 Codex 对话</h2>
+        <p class="empty-sub" id="emptySub">当前连接 DeepSeek Responses API · 模型与 CLI 共用同一份配置</p>
+        <div class="chips" id="chips">
+          <button class="chip" data-prompt="用 TypeScript 写一个带退避重试的 fetch 封装，并解释每个参数。">写一个带重试的 fetch 封装</button>
+          <button class="chip" data-prompt="这段 SQL 查询很慢，帮我分析可能的索引问题：SELECT * FROM orders WHERE user_id = 1 ORDER BY created_at DESC LIMIT 20;">优化一个慢 SQL 查询</button>
+          <button class="chip" data-prompt="解释 Rust 的借用检查器如何避免数据竞争，用一段代码说明。">解释 Rust 借用检查器</button>
+          <button class="chip" data-prompt="把这个需求拆成可执行的任务清单：实现一个支持 Markdown 的笔记应用。">拆解一个需求为任务清单</button>
+        </div>
+        <div class="empty-tips">
+          <span><kbd>Enter</kbd> 发送</span>
+          <span><kbd>Shift</kbd><kbd>Enter</kbd> 换行</span>
+          <span><kbd>Esc</kbd> 停止生成</span>
+        </div>
+      </section>
+
+      <button class="to-bottom" id="toBottom" hidden title="回到最新">
+        <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 5v14m0 0l-6-6m6 6l6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+
+    <div class="composer-wrap">
+      <form class="composer" id="composer" autocomplete="off">
+        <div class="thumbs" id="thumbs" hidden></div>
+        <div class="input-row">
+          <textarea id="input" rows="1" placeholder="询问 Codex 任何问题…" spellcheck="false"></textarea>
+        </div>
+        <div class="composer-bar">
+          <div class="bar-left">
+            <button type="button" class="icon-btn" id="attachBtn" title="添加图片（需 Vision 模型）" aria-label="添加图片">
+              <svg viewBox="0 0 24 24" width="17" height="17"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
+            <input type="file" id="fileInput" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden />
+            <span class="hint" id="composerHint"></span>
+          </div>
+          <div class="bar-right">
+            <span class="stream-state" id="streamState"></span>
+            <button type="submit" class="send-btn" id="sendBtn" title="发送">
+              <span class="send-label">发送</span>
+              <svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 12h13m0 0l-5-5m5 5l-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
+      </form>
+      <div class="legal">内容由 AI 生成，请自行核对 · <span id="footModel">—</span></div>
+    </div>
+  </main>
+</div>
+
+<dialog class="dialog" id="settingsDialog">
+  <form method="dialog" class="dialog-inner" id="settingsForm">
+    <header class="dialog-head">
+      <h2>设置</h2>
+      <button class="icon-btn" value="cancel" aria-label="关闭">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </header>
+
+    <div class="field">
+      <label for="instructionsInput">系统提示词（作为 instructions 发送，每次请求生效）</label>
+      <textarea id="instructionsInput" rows="6" spellcheck="false"></textarea>
+      <div class="field-actions">
+        <button type="button" class="ghost-btn" id="resetInstructions">恢复默认</button>
+        <span class="field-hint" id="instructionsCount"></span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="row-label">
+        <input type="checkbox" id="optAutoCollapse" />
+        <span>回答开始后自动收起「思考过程」</span>
+      </label>
+      <label class="row-label">
+        <input type="checkbox" id="optShowUsage" />
+        <span>显示 token 用量</span>
+      </label>
+      <label class="row-label">
+        <input type="checkbox" id="optTypewriter" />
+        <span>流式打字效果（关闭后按块刷新，更省电）</span>
+      </label>
+    </div>
+
+    <div class="field conn-box">
+      <div class="conn-row"><span>服务端</span><code id="infoEndpoint">—</code></div>
+      <div class="conn-row"><span>供应商</span><code id="infoProvider">—</code></div>
+      <div class="conn-row"><span>配置文件</span><code id="infoConfig">—</code></div>
+      <div class="conn-row"><span>API Key</span><code id="infoKey">—</code></div>
+      <div class="conn-row"><span>快捷键</span><code>Enter 发送 · Shift+Enter 换行 · Esc 停止 · Ctrl+K 新对话</code></div>
+    </div>
+
+    <footer class="dialog-foot">
+      <button class="ghost-btn" value="cancel">取消</button>
+      <button class="primary-btn" id="saveSettings" value="ok">保存</button>
+    </footer>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="./markdown.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>

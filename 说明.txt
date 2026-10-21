@@ -1,0 +1,253 @@
+﻿==========================================================================
+ Codex Web · 网页对话端  学习说明书
+ 版本 1.0.0 ｜ 零依赖 Node.js 项目 ｜ 配套文件：codex-web/
+==========================================================================
+
+一、这是个什么东西
+--------------------------------------------------------------------------
+Codex Web 是给 "Codex CLI 的模型供应商" 配的一个网页聊天界面。
+
+你终端里的 codex（截图里那个深色命令行）用的是：
+    C:\Users\Administrator\.codex\config.toml
+        model = "deepseek-v4-pro"
+        base_url = "https://api.deepseek.com/"
+        wire_api = "responses"
+    C:\Users\Administrator\.codex\models.json
+里面定义了模型清单和思考档位（low / high / max）。
+
+本项目不重复配置，直接读这两份文件，所以浏览器里的模型下拉框、
+思考强度、API Key 与终端 codex 完全一致。API Key 只在服务端使用，
+浏览器端永远拿不到它。
+
+技术上它是：
+    一个 Node.js 单文件 HTTP 服务（静态资源 + 两个接口）
+    + 一个原生 HTML/CSS/JS 前端（无框架、无 npm 包、无 CDN）
+    + 一个手写的 Markdown 渲染器
+全部依赖 Node 内置模块，不需要 npm install，也不需要打包构建。
+
+
+二、怎么运行（三步）
+--------------------------------------------------------------------------
+1) 确认已装 Node.js（18 以上，本项目在 v24 上验证过）：
+       在命令行输入  node -v
+
+2) 双击 codex-web 目录里的「启动.cmd」
+   或者在命令行里：
+       cd codex-web
+       node server.mjs
+
+3) 终端会打印地址，默认打开浏览器：
+       http://127.0.0.1:8788
+
+常用参数：
+       node server.mjs --port 9000     指定端口
+       node server.mjs --no-open       不自动打开浏览器
+       node server.mjs --host 0.0.0.0  允许局域网访问（注意安全）
+   端口被占用时程序会自动往后找可用端口，以终端打印的地址为准。
+   停止服务：在该窗口按 Ctrl+C。
+
+想先看成品长什么样，可以访问：
+       http://127.0.0.1:8788/?demo=1
+   这会塞一段示例对话（带代码块、表格、引用、思考过程），
+   不会调用 API、不消耗 token，纯本地渲染。
+
+
+三、目录结构与每个文件干什么
+--------------------------------------------------------------------------
+codex-web/
+├─ server.mjs            后端主程序：静态文件服务 + API 接口 + 启动逻辑
+├─ lib/
+│  └─ codex-config.mjs   读 config.toml / models.json，解析 provider 和 Key
+├─ public/
+│  ├─ index.html         页面骨架（侧栏、顶栏、消息区、输入框、设置弹窗）
+│  ├─ styles.css         全部样式，暗色主题 + 手机端适配
+│  ├─ app.js             前端逻辑：状态、发送、流式读取、渲染、本地存储
+│  └─ markdown.js        手写 Markdown 渲染器（对流式输出做了容错）
+├─ test/
+│  ├─ smoke.mjs          后端冒烟测试：配置解析 + 真实流式作答
+│  ├─ api-edge.mjs       边界测试：错误模型、图片、文本模型拒绝图片、中断
+│  ├─ ui-shot.mjs        用 Chrome/Edge 远程调试接口驱动真实页面并截图
+│  └─ ui-flows.mjs       交互测试：停止 / 重新生成 / 多轮 / 刷新持久化
+├─ docs/
+│  ├─ preview.png        界面预览（示例对话）
+│  └─ preview-live.png   实测预览（真实一次问答）
+├─ README.md             项目说明（Markdown 版）
+├─ 说明.txt              本文件
+├─ 启动.cmd              Windows 双击启动脚本
+└─ package.json          只是给 npm start / npm test 用的入口，没有依赖
+
+
+四、一次对话的完整链路（重点）
+--------------------------------------------------------------------------
+浏览器                                    本地 Node 服务                DeepSeek
+   |                                            |                          |
+   |  1. 页面加载 GET /                          |                          |
+   |------------------------------------------->|  返回 index.html/css/js    |
+   |                                            |                          |
+   |  2. 前端 GET /api/bootstrap                 |                          |
+   |------------------------------------------->|  读 config.toml/models   |
+   |<-------------------------------------------  模型清单、供应商、Key 状态 |
+   |                                            |                          |
+   |  3. 用户输入，回车 -> POST /api/chat（JSON） |                          |
+   |------------------------------------------->|  拼成 Responses 请求体    |
+   |                                            |------------------------->|
+   |                                            |<-------------------------|
+   |<-------------------------------------------  转成统一格式的 SSE 事件流  |
+   |  4. 收到 reasoning.delta / text.delta ...   |                          |
+   |  5. 逐字渲染，最后 complete 给用量和耗时     |                          |
+
+关键点：浏览器和本地服务之间用的是 SSE（Server-Sent Events）。
+普通 EventSource 只能发 GET，所以前端用 fetch + ReadableStream 自己读
+POST 响应体，按 "\n\n" 切分事件块。
+
+服务端发给浏览器的自定义事件（不是上游原始格式）：
+    {"type":"start",      model, effort, endpoint}
+    {"type":"reasoning.delta", text}     思考过程增量
+    {"type":"text.delta",      text}     回答正文增量
+    {"type":"complete",        usage, responseId, status}
+    {"type":"error",           message}
+    {"type":"aborted",         ms}
+这样前端不用关心上游是 Responses API 还是 Chat Completions API。
+
+
+五、关键代码怎么读（建议按这个顺序看）
+--------------------------------------------------------------------------
+1) lib/codex-config.mjs
+   - parseToml()        一个 ~80 行的极简 TOML 解析器：支持 [section]、
+                        字符串（含转义）、数字、布尔、数组、内联表。
+                        够读 config.toml，不需要第三方库。
+   - providerFromConfig()  取 base_url / wire_api / env_key
+   - resolveApiKey()    优先级：config 里的 experimental_bearer_token
+                        -> auth.json -> 环境变量
+   - normalizeCatalogModels()  把 models.json 转成前端要的模型清单
+   注意 loadCodexEnvironment() 在每次对话请求时都会被调用一次，
+   所以改 config.toml 不用重启服务。
+
+2) server.mjs
+   - handleChat()       核心：校验 -> 组装 -> 发起上游请求 -> 转发事件
+   - buildInput()       把聊天历史转成 Responses API 的 input 数组：
+                        用户消息可带图片（input_image + data URL），
+                        助手消息用 output_text 片段。
+                        多轮上下文就是把整段历史再发一次（无状态）。
+   - streamResponses()  解析上游 SSE，只挑我们关心的几种事件转发。
+                        上游事件名：response.created / content_part.added /
+                        reasoning_text.delta / output_text.delta /
+                        response.completed ...（可用测试脚本打印确认）
+   - streamChatCompletions()  兼容 wire_api = "chat" 的供应商
+   - 上游 404/405 会自动回退到 /v1/responses，兼容 base_url 写法差异
+   - 客户端断开（关标签页/点停止）时用 AbortController 掐断上游请求
+
+3) public/app.js
+   - send()             收消息 -> 建用户消息 -> 建助手占位 -> runStream()
+   - runStream()        fetch 请求、处理 HTTP 错误、收尾（状态/用量/存档）
+   - consumeStream()    读流、按 \n\n 切事件、更新 message 对象
+   - scheduleFlush()    用一个 requestAnimationFrame 节流重绘；
+                        避免每个 token 都重排 DOM
+   - paintStreamingMessage()  只更新"正在生成的那条消息"的节点
+   - buildMessageNode()  渲染一条消息（用户气泡 / Codex 卡片 / 思考面板 /
+                        代码块 / 操作按钮 / token 用量）
+   - localStorage 键名 codexweb.v1，存会话、当前会话、设置
+
+4) public/markdown.js
+   思路：先把行内代码"抠出来"占位 -> 整体 HTML 转义 -> 再做加粗/斜体/
+   链接/自动链接 -> 把占位还原。所以即使模型输出 <script> 也只会当文本。
+   块级解析支持：围栏代码块、标题、分隔线、引用、表格、有序/无序列表、
+   段落；代码块没闭合时也照常渲染（流式输出期间很有用）。
+
+5) public/styles.css
+   用 CSS 变量定义颜色（:root 里的 --bg / --text / --accent ...），
+   改配色只改这里。900px 以下自动切成手机布局（侧栏变抽屉）。
+
+
+六、想改成自己的样子，从这五个地方下手
+--------------------------------------------------------------------------
+1) 换配色/字体：
+   改 styles.css 里 :root 的变量即可，其余样式都引用变量。
+
+2) 换提示词（系统提示词）：
+   右上角齿轮 -> 系统提示词，会作为 instructions 随每次请求发送；
+   默认值在 public/app.js 顶部的 DEFAULT_INSTRUCTIONS。
+
+3) 换模型 / 供应商：
+   改 ~/.codex/config.toml（model、[model_providers.*] 的 base_url、
+   wire_api、experimental_bearer_token），刷新页面即可，服务不用重启。
+   如果供应商只支持 /chat/completions，把 wire_api 设成 "chat"。
+
+4) 加"工具调用"（让网页端也能读写文件 / 执行命令）：
+   现在前端只发对话，没给模型 tools。要升级成 Codex 那种 agent，两条路：
+     a. 纯 API 路线：在请求体里加 tools（shell / apply_patch 等），
+        解析上游 response.output_item 里的 function_call，本地执行后
+        把结果作为新 input 再请求一轮（这就是 ReAct 循环）。
+     b. 桥接 CLI 路线：服务端 spawn 子进程
+            codex exec --json "用户的话"
+        把它的 JSONL 事件转成我们已有的 SSE 格式推给前端。
+        这条路线最省事，因为沙箱、审批、工具都在 codex 里现成了。
+        注意：一旦能执行命令，命令行参数要严格校验，别直接拼 shell。
+
+5) 把会话存到服务端（多设备共享）：
+   现在用 localStorage（浏览器本地）。要共享就把 send() 前后改成请求
+   /api/conversations，服务端用 JSON 文件或 SQLite 存；接口很小，容易加。
+
+
+七、测试脚本怎么用
+--------------------------------------------------------------------------
+服务端跑起来以后，另开一个命令行窗口：
+
+    cd codex-web
+    node test/smoke.mjs 8788        # 后端：配置 + 真实流式回答
+    node test/api-edge.mjs 8788     # 边界：错误信息 / 图片 / 中断
+
+UI 自动化测试需要浏览器远程调试（无头 Edge 或 Chrome 都行）：
+
+    # 窗口 1：启动无头浏览器
+    & "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+      --headless=new --disable-gpu --remote-debugging-port=9333
+      --remote-allow-origins=* --user-data-dir="%TEMP%\codexweb-test" about:blank
+
+    # 窗口 2：驱动页面
+    node test/ui-shot.mjs  http://127.0.0.1:8788/ docs\shot.png 9333
+    node test/ui-flows.mjs http://127.0.0.1:8788/ 9333
+
+这些脚本会打印 PASS/FAIL。测试会真实调用 API（消耗少量 token），
+ui-shot 还会把截图写到指定路径，方便看渲染效果。
+
+
+八、常见问题
+--------------------------------------------------------------------------
+Q: 打开页面一直显示"服务端未连接"？
+A: 确认 node server.mjs 的窗口没关，并且访问的是终端打印的那个端口。
+
+Q: 对话报 400：The supported API model names are ...
+A: 当前 config.toml 里的 model 不被该供应商支持，用下拉框换模型即可。
+
+Q: 图片发不出去 / 提示模型不支持图片？
+A: deepseek-v4-pro 是纯文本模型。附加图片时前端会自动切到
+   deepseek-v4-flash-vision-exp（models.json 里声明了 image 模态）。
+
+Q: 思考过程很长，看着碍眼？
+A: 默认回答开始会自动收起；设置里可以关掉"自动收起"或直接用
+   下拉框把思考强度调成"低"。
+
+Q: 想清空历史？
+A: 设置 -> 浏览器开发者工具 -> Application -> Local Storage，
+   删除 codexweb.v1。
+
+Q: 会不会把我的 Key 传到浏览器？
+A: 不会。/api/bootstrap 只返回 hasKey 真假和来源说明，从不返回 Key。
+
+Q: 这跟终端 codex 有什么区别？
+A: 共用同一份模型配置，但网页端是"纯对话"：不会读写你的文件、
+   不会执行命令。需要动手干活时还是用终端 codex；要搬过来，
+   看第六节第 4 条。
+
+
+九、安全提醒
+--------------------------------------------------------------------------
+1. 服务默认只监听 127.0.0.1，本机以外访问不到，这是有意的。
+2. 除非前面加了带鉴权的反向代理，不要把 --host 改成 0.0.0.0。
+3. 会话记录存在浏览器本地，导出 Markdown 时注意里面可能含敏感内容。
+4. config.toml 里是明文 Key，别把这个文件发给别人或传到公开仓库。
+
+祝学习顺利。代码里注释都是中文，边跑边改是最快的学法：
+先在浏览器按 F12，看 Network 里 /api/chat 的事件流，再回来看
+server.mjs 的 handleChat，链路就清楚了。

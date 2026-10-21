@@ -1,0 +1,15 @@
+{
+  "name": "codex-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Codex Web —— 给 Codex CLI 的 provider 配一个浏览器对话端（零依赖）",
+  "scripts": {
+    "start": "node server.mjs",
+    "start:no-open": "node server.mjs --no-open",
+    "test": "node test/smoke.mjs && node test/api-edge.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
